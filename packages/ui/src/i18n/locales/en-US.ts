@@ -750,6 +750,7 @@ export default {
     defaultModel: "Default Model",
     clickToFetchModels: "Click arrow to fetch model list",
     apiKey: "API Key",
+    getApiKey: "Get API Key",
     addModel: "Add",
     addImageModel: "Add Image Model",
 
@@ -1006,6 +1007,7 @@ export default {
     title: "History",
     iterationNote: "Iteration Note",
     optimizedPrompt: "Optimized Prompt",
+    searchPlaceholder: "Search history...",
     confirmClear:
       "Are you sure you want to clear all history records? This action cannot be undone.",
     confirmDeleteChain:
