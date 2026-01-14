@@ -2,9 +2,9 @@ services:
   prompt-optimizer:
     image: linshen/prompt-optimizer:latest
 #     Alternatively, you can build from source:
-#     build:
-#        context: .
-#        dockerfile: Dockerfile
+    build:
+       context: .
+       dockerfile: Dockerfile
     container_name: prompt-optimizer
     restart: unless-stopped
     ports:
