@@ -41,6 +41,8 @@ import { ParameterValidator } from './adapters/parameter-adapter.js';
 import { getTemplateOptions, getDefaultTemplateId } from './config/templates.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
+import { loadAuthConfig } from './config/auth-config.js';
+import { setupAuthRoutes } from './auth/routes.js';
 
 // 创建服务器实例的工厂函数
 async function createServerInstance(config: any) {
@@ -361,6 +363,7 @@ async function main() {
     const args = process.argv.slice(2);
     const transport = args.find(arg => arg.startsWith('--transport='))?.split('=')[1] || 'stdio';
     const port = parseInt(args.find(arg => arg.startsWith('--port='))?.split('=')[1] || config.httpPort.toString());
+    const authConfig = loadAuthConfig();
 
     logger.info('Starting MCP Server for Prompt Optimizer');
     logger.info(`Transport: ${transport}, Port: ${port}`);
@@ -377,6 +380,8 @@ async function main() {
       // 使用 Express 和会话管理支持多客户端连接
       const app = express();
       app.use(express.json());
+      logger.info(`Authentication enabled: ${authConfig.enabled}`);
+      await setupAuthRoutes(app, authConfig);
       logger.info('Express app configured');
 
       // 存储每个会话的传输实例

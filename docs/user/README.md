@@ -23,6 +23,7 @@
 ### 自部署
 - [Vercel部署指南（中文）](./deployment/vercel.md) - 在Vercel上部署Web版
 - [Vercel部署指南（英文）](./deployment/vercel_en.md) - Vercel deployment guide (English)
+- [Docker 自托管部署指南](./deployment/docker.md) - 使用 Docker/Compose 在自有服务器部署（Web + MCP 一体）
 
 ## ❓ 常见问题
 

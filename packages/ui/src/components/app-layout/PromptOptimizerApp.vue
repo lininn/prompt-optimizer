@@ -23,7 +23,144 @@
         <div v-else-if="!services" class="loading-container error">
             <p>{{ t("toast.error.appInitFailed") }}</p>
         </div>
-        <template v-if="isReady">
+        <div
+            v-else-if="authState.enabled && authState.loading"
+            class="loading-container"
+        >
+            <div class="spinner"></div>
+            <p>正在获取认证配置...</p>
+        </div>
+        <div
+            v-else-if="authBlocking"
+            class="auth-wrapper"
+        >
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="auth-logo">
+                        <div class="logo-icon">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <h1 class="auth-title">Prompt Optimizer</h1>
+                    <p class="auth-subtitle">
+                        {{ authState.mode === "login" ? "欢迎回来，请登录您的账户" : "创建新账户，开始优化您的提示词" }}
+                    </p>
+                </div>
+
+                <NTabs
+                    v-model:value="authState.mode"
+                    type="segment"
+                    animated
+                    size="large"
+                    class="auth-tabs"
+                    @update:value="switchAuthMode"
+                >
+                    <NTabPane name="login" tab="登录" />
+                    <NTabPane v-if="authState.allowRegistration" name="register" tab="注册" />
+                </NTabs>
+
+                <NForm
+                    ref="formRef"
+                    :model="authForm"
+                    :rules="formRules"
+                    size="large"
+                    label-placement="top"
+                    require-mark-placement="right-hanging"
+                    class="auth-form"
+                >
+                    <NFormItem label="用户名" path="username">
+                        <NInput
+                            v-model:value="authForm.username"
+                            placeholder="请输入用户名"
+                            autocomplete="username"
+                            clearable
+                            @keyup.enter="handleSubmitAuth"
+                        >
+                            <template #prefix>
+                                <NIcon :component="PersonOutline" />
+                            </template>
+                        </NInput>
+                    </NFormItem>
+
+                    <NFormItem
+                        :label="authState.mode === 'register' ? '密码（至少8位，包含字母和数字）' : '密码'"
+                        path="password"
+                    >
+                        <NInput
+                            v-model:value="authForm.password"
+                            type="password"
+                            show-password-on="click"
+                            placeholder="请输入密码"
+                            autocomplete="current-password"
+                            @keyup.enter="handleSubmitAuth"
+                        >
+                            <template #prefix>
+                                <NIcon :component="LockClosedOutline" />
+                            </template>
+                        </NInput>
+                    </NFormItem>
+
+                    <NFormItem label="验证码" path="captcha">
+                        <div class="captcha-container">
+                            <NInput
+                                v-model:value="authForm.captcha"
+                                placeholder="请输入验证码"
+                                class="captcha-input"
+                                @keyup.enter="handleSubmitAuth"
+                            >
+                                <template #prefix>
+                                    <NIcon :component="CheckmarkCircleOutline" />
+                                </template>
+                            </NInput>
+                            <div class="captcha-image" @click="refreshCaptcha">
+                                <img
+                                    v-if="authState.captcha.image"
+                                    :src="authState.captcha.image"
+                                    alt="验证码"
+                                />
+                                <span v-else class="captcha-placeholder">点击刷新</span>
+                            </div>
+                            <NButton
+                                secondary
+                                :loading="authState.captcha.loading"
+                                @click="refreshCaptcha"
+                                class="captcha-refresh-btn"
+                            >
+                                <template #icon>
+                                    <NIcon :component="RefreshOutline" />
+                                </template>
+                            </NButton>
+                        </div>
+                    </NFormItem>
+
+                    <div v-if="authState.error" class="auth-error">
+                        <svg class="error-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 8V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <circle cx="12" cy="16" r="1" fill="currentColor"/>
+                        </svg>
+                        <span>{{ authState.error }}</span>
+                    </div>
+
+                    <NButton
+                        type="primary"
+                        size="large"
+                        block
+                        strong
+                        :loading="authState.processing"
+                        @click="handleSubmitAuth"
+                        class="auth-submit"
+                    >
+                        {{ authState.mode === "login" ? "登录" : "注册" }}
+                    </NButton>
+                </NForm>
+            </div>
+        </div>
+        <template v-else>
             <MainLayoutUI>
                 <!-- Title Slot -->
                 <template #title>
@@ -610,6 +747,8 @@ import {
     computed,
     shallowRef,
     toRef,
+    reactive,
+    onMounted,
     type Ref,
 } from "vue";
 import { useI18n } from "vue-i18n";
@@ -617,7 +756,15 @@ import {
     NConfigProvider,
     NGlobalStyle,
     NText,
+    NForm,
+    NFormItem,
+    NInput,
+    NButton,
+    NTabs,
+    NTabPane,
+    NIcon,
 } from "naive-ui";
+import { PersonOutline, LockClosedOutline, RefreshOutline, CheckmarkCircleOutline } from '@vicons/ionicons5';
 import hljs from "highlight.js/lib/core";
 import jsonLang from "highlight.js/lib/languages/json";
 hljs.registerLanguage("json", jsonLang);
@@ -719,6 +866,264 @@ const isReady = computed(() => !!services.value && !isInitializing.value);
 
 // 创建 ContextEditor 使用的 services 引用
 const servicesForContextEditor = computed(() => services?.value || null);
+
+// 认证状态管理
+type AuthMode = "login" | "register";
+type AuthUser = { id: number; username: string; is_admin: number; last_login_at?: string | null };
+const AUTH_TOKEN_KEY = "prompt_optimizer_auth_token";
+
+const authState = reactive({
+    enabled: false,
+    allowRegistration: true,
+    loading: true,
+    processing: false,
+    isAuthenticated: false,
+    mode: "login" as AuthMode,
+    token:
+        (typeof localStorage !== "undefined" && localStorage.getItem(AUTH_TOKEN_KEY)) ||
+        "",
+    user: null as AuthUser | null,
+    error: "",
+    captcha: {
+        id: null as number | null,
+        image: "",
+        expiresIn: 0,
+        loading: false,
+    },
+});
+
+const authForm = reactive({
+    username: "",
+    password: "",
+    captcha: "",
+});
+
+const formRef = ref<any>(null);
+
+const formRules = computed(() => ({
+    username: [
+        {
+            required: true,
+            message: "请输入用户名",
+            trigger: ["blur", "input"],
+        },
+        {
+            min: 3,
+            max: 20,
+            message: "用户名长度应为3-20个字符",
+            trigger: ["blur", "input"],
+        },
+    ],
+    password: [
+        {
+            required: true,
+            message: "请输入密码",
+            trigger: ["blur", "input"],
+        },
+        ...(authState.mode === "register"
+            ? [
+                  {
+                      min: 8,
+                      message: "密码至少需要8个字符",
+                      trigger: ["blur", "input"],
+                  },
+                  {
+                      validator: (_rule: any, value: string) => {
+                          if (!value) return true;
+                          const hasLetter = /[a-zA-Z]/.test(value);
+                          const hasNumber = /[0-9]/.test(value);
+                          return hasLetter && hasNumber;
+                      },
+                      message: "密码必须包含字母和数字",
+                      trigger: ["blur", "input"],
+                  },
+              ]
+            : []),
+    ],
+    captcha: [
+        {
+            required: true,
+            message: "请输入验证码",
+            trigger: ["blur", "input"],
+        },
+    ],
+}));
+
+const authBlocking = computed(() => authState.enabled && !authState.isAuthenticated);
+
+function persistToken(token: string) {
+    authState.token = token;
+    if (typeof localStorage !== "undefined") {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+    }
+}
+
+function clearToken() {
+    authState.token = "";
+    authState.user = null;
+    authState.isAuthenticated = false;
+    if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+}
+
+async function refreshCaptcha() {
+    if (!authState.enabled) return;
+    authState.captcha.loading = true;
+    authState.error = "";
+    try {
+        const res = await fetch("/api/captcha/image");
+        const data = await res.json();
+        if (res.ok && data?.data?.captcha_id) {
+            authState.captcha.id = data.data.captcha_id;
+            authState.captcha.image = data.data.image;
+            authState.captcha.expiresIn = data.data.expires_in || 0;
+        } else {
+            authState.error = data?.message || "验证码获取失败，请稍后再试";
+        }
+    } catch (error) {
+        console.warn("[Auth] Failed to fetch captcha", error);
+        authState.error = "验证码获取失败，请检查网络";
+    } finally {
+        authState.captcha.loading = false;
+    }
+}
+
+async function validateToken(token: string) {
+    if (!token) return false;
+    try {
+        const res = await fetch("/api/auth/me", {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+        const data = await res.json();
+        if (res.ok && data?.code === 200) {
+            authState.isAuthenticated = true;
+            authState.user = data.data;
+            authState.error = "";
+            return true;
+        }
+    } catch (error) {
+        console.warn("[Auth] Token validation failed", error);
+    }
+    clearToken();
+    await refreshCaptcha();
+    return false;
+}
+
+function switchAuthMode(mode: AuthMode) {
+    if (authState.mode === mode) return;
+    authState.mode = mode;
+    authState.error = "";
+    authForm.captcha = "";
+    refreshCaptcha();
+}
+
+async function handleSubmitAuth() {
+    // 使用 Naive UI 表单验证
+    try {
+        await formRef.value?.validate();
+    } catch (errors: any) {
+        console.log("[Auth] Form validation failed:", errors);
+        // 从验证错误中提取第一个错误消息
+        if (errors && Array.isArray(errors)) {
+            const firstError = errors[0];
+            if (firstError && Array.isArray(firstError) && firstError[0]?.message) {
+                authState.error = firstError[0].message;
+            } else {
+                authState.error = "请检查输入信息";
+            }
+        } else {
+            authState.error = "请检查输入信息";
+        }
+        return;
+    }
+
+    if (!authState.captcha.id) {
+        await refreshCaptcha();
+        if (!authState.captcha.id) {
+            authState.error = "验证码加载失败，请刷新页面重试";
+            return;
+        }
+    }
+
+    authState.processing = true;
+    authState.error = "";
+
+    try {
+        const endpoint = authState.mode === "login" ? "/api/auth/login" : "/api/auth/register";
+        const payload = {
+            username: authForm.username.trim(),
+            password: authForm.password,
+            captcha_id: authState.captcha.id,
+            captcha_code: authForm.captcha,
+        };
+
+        const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (res.ok && data?.code === 200 && data?.data?.token) {
+            persistToken(data.data.token);
+            authState.user = data.data.user;
+            authState.isAuthenticated = true;
+            authState.error = "";
+            return;
+        }
+
+        authState.error = data?.message || "请求失败，请重试";
+        await refreshCaptcha();
+        // 重新设置错误信息，因为 refreshCaptcha 会清空它
+        authState.error = data?.message || "请求失败，请重试";
+    } catch (error) {
+        console.error("[Auth] request failed", error);
+        authState.error = "网络错误，请稍后再试";
+        await refreshCaptcha();
+        // 重新设置错误信息，因为 refreshCaptcha 会清空它
+        authState.error = "网络错误，请稍后再试";
+    } finally {
+        authState.processing = false;
+    }
+}
+
+async function initAuth() {
+    authState.loading = true;
+    authState.error = "";
+    try {
+        const res = await fetch("/api/auth/config");
+        const data = await res.json();
+        const enabled = !!data?.data?.enabled;
+        authState.enabled = enabled;
+        authState.allowRegistration = data?.data?.allowRegistration !== false;
+
+        if (!enabled) {
+            authState.isAuthenticated = true;
+            return;
+        }
+
+        await refreshCaptcha();
+        if (authState.token) {
+            await validateToken(authState.token);
+        }
+    } catch (error) {
+        console.warn("[Auth] Failed to load config", error);
+        // 无法获取配置时，保持需要登录的默认态，避免绕过鉴权
+        authState.enabled = true;
+        authState.isAuthenticated = false;
+        await refreshCaptcha();
+    } finally {
+        authState.loading = false;
+    }
+}
+
+onMounted(() => {
+    initAuth();
+});
+
 
 // 6. 创建所有必要的引用
 const promptService = shallowRef<IPromptService | null>(null);
@@ -1722,6 +2127,259 @@ const handleTestAreaCompareToggle = () => {
     }
     100% {
         transform: rotate(360deg);
+    }
+}
+
+.auth-wrapper {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    overflow: hidden;
+}
+
+.auth-wrapper::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+    pointer-events: none;
+    animation: gradientShift 15s ease infinite;
+}
+
+@keyframes gradientShift {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+.auth-card {
+    position: relative;
+    z-index: 1;
+    width: min(480px, 100%);
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    padding: 48px 40px;
+    animation: cardSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cardSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.auth-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.logo-icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    color: white;
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+    animation: logoFloat 3s ease-in-out infinite;
+}
+
+.logo-icon svg {
+    width: 36px;
+    height: 36px;
+}
+
+@keyframes logoFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+.auth-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 12px 0;
+    color: #1a202c;
+    letter-spacing: -0.02em;
+}
+
+.auth-subtitle {
+    margin: 0;
+    color: #718096;
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.auth-tabs {
+    margin-bottom: 32px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.auth-form :deep(.n-input .n-input__input) {
+    align-items: center;
+}
+
+.auth-form :deep(.n-input .n-input__input-el) {
+    height: var(--n-height);
+    line-height: var(--n-height);
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.auth-form :deep(.n-input .n-input__prefix),
+.auth-form :deep(.n-input .n-input__suffix),
+.auth-form :deep(.n-input .n-input__clear),
+.auth-form :deep(.n-input .n-input__eye) {
+    display: inline-flex;
+    align-items: center;
+}
+
+.captcha-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.captcha-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.captcha-image {
+    width: 120px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #f7fafc;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.captcha-image:hover {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.captcha-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.captcha-placeholder {
+    font-size: 12px;
+    color: #a0aec0;
+}
+
+.captcha-refresh-btn {
+    flex-shrink: 0;
+}
+
+.auth-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+    border: 1px solid #fc8181;
+    border-radius: 12px;
+    color: #c53030;
+    font-size: 14px;
+    animation: errorShake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.error-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.auth-submit {
+    margin-top: 8px;
+    height: 48px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.auth-submit:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(102, 126, 234, 0.4);
+}
+
+.auth-submit:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+    .auth-wrapper {
+        padding: 16px;
+    }
+
+    .auth-card {
+        padding: 32px 24px;
+    }
+
+    .auth-title {
+        font-size: 24px;
+    }
+
+    .auth-subtitle {
+        font-size: 14px;
+    }
+
+    .logo-icon {
+        width: 56px;
+        height: 56px;
+    }
+
+    .logo-icon svg {
+        width: 32px;
+        height: 32px;
+    }
+
+    .captcha-image {
+        width: 100px;
     }
 }
 </style>

@@ -36,6 +36,7 @@
     "@codemirror/tooltip": "^0.19.16",
     "@codemirror/view": "^6.38.6",
     "@prompt-optimizer/core": "workspace:*",
+    "@vicons/ionicons5": "^0.13.0",
     "@vicons/tabler": "^0.13.0",
     "codemirror": "^6.0.2",
     "dompurify": "^3.2.4",

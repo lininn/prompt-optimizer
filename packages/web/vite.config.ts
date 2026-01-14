@@ -13,6 +13,17 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 18181,
       host: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/mcp': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          ws: true,
+        },
+      },
       fs: {
         // 允许为工作区依赖提供服务
         allow: ['..']

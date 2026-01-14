@@ -196,3 +196,9 @@ CLAUDE.md
 .kiro
 # BMAD (local only)
 .ace-tool/
+.gemini/
+.iflow/
+.codex
+.claude
+.github
+openspec
