@@ -32,6 +32,32 @@ else
     sh /docker-entrypoint.d/40-generate-config.sh || echo "Manual generation failed"
 fi
 
+# 等待 MySQL 就绪（如果启用了认证）
+if [ "$AUTH_ENABLED" = "true" ]; then
+    echo "Waiting for MySQL to be ready..."
+    DB_HOST=${DB_HOST:-mysql}
+    DB_PORT=${DB_PORT:-3306}
+    MAX_RETRIES=30
+    RETRY_COUNT=0
+
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; then
+            echo "✅ MySQL is ready at $DB_HOST:$DB_PORT"
+            # 额外等待 2 秒确保 MySQL 完全初始化
+            sleep 2
+            break
+        fi
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "Waiting for MySQL... ($RETRY_COUNT/$MAX_RETRIES)"
+        sleep 2
+    done
+
+    if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+        echo "❌ ERROR: MySQL did not become ready after $MAX_RETRIES retries"
+        echo "Continuing anyway, MCP Server may fail to start..."
+    fi
+fi
+
 echo "Starting services with supervisor..."
 echo "MCP Server will run on port: ${MCP_HTTP_PORT}"
 echo "MCP Server log level: ${MCP_LOG_LEVEL}"

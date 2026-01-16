@@ -11,8 +11,8 @@ RUN pnpm run build
 RUN pnpm mcp:build
 
 FROM nginx:stable-alpine
-# 安装htpasswd工具、dos2unix和supervisor
-RUN apk add --no-cache apache2-utils dos2unix supervisor nodejs npm gettext curl
+# 安装htpasswd工具、dos2unix、supervisor和netcat（用于等待MySQL）
+RUN apk add --no-cache apache2-utils dos2unix supervisor nodejs npm gettext curl netcat-openbsd
 
 # 安装pnpm
 RUN npm install -g pnpm
