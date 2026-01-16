@@ -1,4 +1,22 @@
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: prompt-optimizer-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=${DB_NAME:-prompt}
+      - MYSQL_USER=${DB_USER:-promptuser}
+      - MYSQL_PASSWORD=${DB_PASS:-promptpass}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   prompt-optimizer:
     image: linshen/prompt-optimizer:latest
 #     Alternatively, you can build from source:
@@ -15,6 +33,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
       # nginx内部端口配置
       - NGINX_PORT=${NGINX_PORT:-80}
@@ -34,10 +55,32 @@ services:
       - MCP_DEFAULT_LANGUAGE=${MCP_DEFAULT_LANGUAGE:-zh}
       - MCP_DEFAULT_MODEL_PROVIDER=${MCP_DEFAULT_MODEL_PROVIDER:-openai}
 
+      # 数据库配置
+      - DB_TYPE=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${DB_USER:-promptuser}
+      - DB_PASS=${DB_PASS:-promptpass}
+      - DB_NAME=${DB_NAME:-prompt}
 
+      # 认证与验证码配置（启用应用内置认证）
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - AUTH_ALLOW_REGISTRATION=${AUTH_ALLOW_REGISTRATION:-true}
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET:-please-change-me-to-a-random-secret}
+      - AUTH_JWT_EXPIRES_IN=${AUTH_JWT_EXPIRES_IN:-7d}
+      - AUTH_CAPTCHA_TTL_SECONDS=${AUTH_CAPTCHA_TTL_SECONDS:-300}
+      - AUTH_CAPTCHA_COOLDOWN_SECONDS=${AUTH_CAPTCHA_COOLDOWN_SECONDS:-5}
+      - AUTH_CAPTCHA_COOLDOWN_MAX_REQUESTS=${AUTH_CAPTCHA_COOLDOWN_MAX_REQUESTS:-3}
+      - AUTH_PASSWORD_MIN_LENGTH=${AUTH_PASSWORD_MIN_LENGTH:-8}
+      - AUTH_PASSWORD_REQUIRE_ALNUM=${AUTH_PASSWORD_REQUIRE_ALNUM:-true}
+      - AUTH_RATE_LIMIT_MAX_FAILURES=${AUTH_RATE_LIMIT_MAX_FAILURES:-5}
+      - AUTH_RATE_LIMIT_LOCK_MINUTES=${AUTH_RATE_LIMIT_LOCK_MINUTES:-10}
 
-      # Basic认证配置（可选）
-      - ACCESS_USERNAME=${ACCESS_USERNAME:-admin}
-      - ACCESS_PASSWORD=${ACCESS_PASSWORD:-123456}
+      # Basic认证配置（可选，已禁用）
+      # - ACCESS_USERNAME=${ACCESS_USERNAME:-admin}
+      # - ACCESS_PASSWORD=${ACCESS_PASSWORD:-123456}
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  mysql_data:
